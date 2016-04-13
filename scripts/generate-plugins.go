@@ -59,11 +59,11 @@ func main() {
 }
 
 type plugin struct {
-	Package    string // This plugin's package name (aws)
-	PluginName string // Name of plugin (aws); important if there is a dash
-	TypeName   string // Type of plugin (provider)
-	Path       string // Path relative to terraform builtin (provider/aws)
-	ImportName string // PluginName+TypeName (awsprovider)
+	Package    string // Package name from ast  remoteexec
+	PluginName string // Path via deriveName()  remote-exec
+	TypeName   string // Type of plugin         provisioner
+	Path       string // Relative import path   builtin/provisioners/remote-exec
+	ImportName string // See deriveImport()     remoteexecprovisioner
 }
 
 // makeProviderMap creates a map of providers like this:
@@ -80,11 +80,17 @@ func makeProviderMap(varName, varType string, items []plugin) string {
 	return output
 }
 
-// makeProvisionerMap
+// makeProvisionerMap creates a map of provisioners like this:
+//
+//	"file":        func() terraform.ResourceProvisioner { return new(file.ResourceProvisioner) },
+//	"local-exec":  func() terraform.ResourceProvisioner { return new(localexec.ResourceProvisioner) },
+//	"remote-exec": func() terraform.ResourceProvisioner { return new(remoteexec.ResourceProvisioner) },
+//
+// This is more verbose than the Provider case because there is no corresponding
+// Provisioner function.
 func makeProvisionerMap(varName, varType string, items []plugin) string {
 	output := ""
 	for _, item := range items {
-		// "local-exec":  func() terraform.ResourceProvisioner { return new(localexec.ResourceProvisioner) },
 		output += fmt.Sprintf("\t\"%s\":   func() terraform.ResourceProvisioner { return new(%s.%s) },\n", item.PluginName, item.ImportName, item.TypeName)
 	}
 	return output
@@ -135,8 +141,10 @@ func listDirectories(path string) ([]string, error) {
 	return names, nil
 }
 
-// deriveName determines the name of the plugin based on the path hierarchy:
-// provider/aws becomes awsprovider
+// deriveName determines the name of the plugin relative to the specified root
+// path. For example:
+//
+// deriveName("builtin/providers", fullPathToProvider) == providerFolderName
 func deriveName(root, full string) string {
 	short, _ := filepath.Rel(root, full)
 	bits := strings.Split(short, string(os.PathSeparator))
@@ -144,17 +152,19 @@ func deriveName(root, full string) string {
 }
 
 // deriveImport will build a unique import identifier based on packageName and
-// the result of deriveName()
+// the result of deriveName(). This is important for disambigutating between
+// providers and provisioners that have the same name. This will be something
+// like:
 //
-// This will be something like    -> awsprovider
+//	remote-exec -> remoteexecprovisioner
 //
-// Which is long, but deterministic and unique.
+// which is long, but is deterministic and unique.
 func deriveImport(typeName, derivedName string) string {
 	return strings.Replace(derivedName, "-", "", -1) + strings.ToLower(typeName)
 }
 
-// discoverTypesInPath searches for types of typeID in path and returns a list
-// of plugins it finds.
+// discoverTypesInPath searches for types of typeID in path using go's ast and
+// returns a list of plugins it finds.
 func discoverTypesInPath(path, typeID, typeName string) ([]plugin, error) {
 	pluginTypes := []plugin{}
 
@@ -213,6 +223,8 @@ func discoverTypesInPath(path, typeID, typeName string) ([]plugin, error) {
 						}
 					}
 				case *ast.TypeSpec:
+					// In the simpler case we will simply check whether the type
+					// declaration has the name we were looking for.
 					if x.Name.Name == typeID {
 						derivedName := deriveName(path, dir)
 						pluginTypes = append(pluginTypes, plugin{
