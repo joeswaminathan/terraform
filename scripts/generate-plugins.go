@@ -38,8 +38,8 @@ func main() {
 	// Do some simple code generation and templating
 	output := source
 	output = strings.Replace(output, "IMPORTS", makeImports(providers, provisioners), 1)
-	output = strings.Replace(output, "PROVIDERS", makeProviderMap("Providers", "Provider", providers), 1)
-	output = strings.Replace(output, "PROVISIONERS", makeProvisionerMap("Provisioners", "Provisioner", provisioners), 1)
+	output = strings.Replace(output, "PROVIDERS", makeProviderMap(providers), 1)
+	output = strings.Replace(output, "PROVISIONERS", makeProvisionerMap(provisioners), 1)
 
 	// TODO sort the lists of plugins so we are not subjected to random OS ordering of the plugin lists
 
@@ -72,7 +72,7 @@ type plugin struct {
 // 	"aws":        aws.Provider,
 // 	"azurerm":    azurerm.Provider,
 // 	"cloudflare": cloudflare.Provider,
-func makeProviderMap(varName, varType string, items []plugin) string {
+func makeProviderMap(items []plugin) string {
 	output := ""
 	for _, item := range items {
 		output += fmt.Sprintf("\t\"%s\":   %s.%s,\n", item.PluginName, item.ImportName, item.TypeName)
@@ -88,10 +88,10 @@ func makeProviderMap(varName, varType string, items []plugin) string {
 //
 // This is more verbose than the Provider case because there is no corresponding
 // Provisioner function.
-func makeProvisionerMap(varName, varType string, items []plugin) string {
+func makeProvisionerMap(items []plugin) string {
 	output := ""
 	for _, item := range items {
-		output += fmt.Sprintf("\t\"%s\":   func() terraform.ResourceProvisioner { return new(%s.%s) },\n", item.PluginName, item.ImportName, item.TypeName)
+		output += fmt.Sprintf("\t\"%s\": func() terraform.ResourceProvisioner { return new(%s.%s) },\n", item.PluginName, item.ImportName, item.TypeName)
 	}
 	return output
 }
@@ -142,9 +142,7 @@ func listDirectories(path string) ([]string, error) {
 }
 
 // deriveName determines the name of the plugin relative to the specified root
-// path. For example:
-//
-// deriveName("builtin/providers", fullPathToProvider) == providerFolderName
+// path.
 func deriveName(root, full string) string {
 	short, _ := filepath.Rel(root, full)
 	bits := strings.Split(short, string(os.PathSeparator))
