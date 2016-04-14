@@ -1,10 +1,10 @@
 package icf
 
 import (
-	"cto-github.cisco.com/jswamina/icf-sdk-go/src/icf"
 	"fmt"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/terraform"
+	"github.com/joeswaminathan/icf-sdk-go/icf"
 )
 
 // Provider returns a terraform.ResourceProvider.
