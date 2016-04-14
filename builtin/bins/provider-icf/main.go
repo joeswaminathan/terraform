@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/hashicorp/terraform/plugin"
-	"github.com/joeswaminathan/terraform/icf"
+	"github.com/joeswaminathan/terraform/builtin/providers/icf"
 )
 
 func main() {
