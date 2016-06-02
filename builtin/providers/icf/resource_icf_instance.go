@@ -5,7 +5,7 @@ import (
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/joeswaminathan/icf-sdk-go/icf"
-	"log"
+	"cto-github.cisco.com/jswamina/kvs_infra/src/infra/log"
 	"strings"
 	"time"
 )
@@ -105,9 +105,10 @@ func resourceIcfInstanceCreate(d *schema.ResourceData, meta interface{}) (err er
 	log.Printf("[DEBUG] Waiting for instance (%s) to become running",
 		instance.Oid)
 
+
 	stateConf := &resource.StateChangeConf{
-		Pending:    []string{"Create_In_Progress"},
-		Target:     []string{"Success"},
+		Pending:    []string{icf.StatusCreateInProgress},
+		Target:     []string{icf.StatusSuccess, icf.StatusCreateFailed},
 		Refresh:    InstanceStateRefreshFunc(c, instance.Oid),
 		Timeout:    20 * time.Minute,
 		Delay:      30 * time.Second,
@@ -124,6 +125,11 @@ func resourceIcfInstanceCreate(d *schema.ResourceData, meta interface{}) (err er
 	}
 
 	instance = instanceRaw.(*icf.Instance)
+
+	if instance.Status == icf.StatusCreateFailed {
+		err = fmt.Errorf("Error creating instance")
+		return
+	}
 	// Store the resulting ID so we can look this up later
 	d.SetId(instance.Oid)
 
@@ -143,7 +149,8 @@ func resourceIcfInstanceRead(d *schema.ResourceData, meta interface{}) error {
 	}
 	//d.Set("public_ip", instance.PublicIp)
 	d.Set("public_ip", instance.Nics[0].Ip)
-	d.Set("private_ip", instance.PrivateIp)
+	//d.Set("private_ip", instance.PrivateIp)
+	d.Set("private_ip", instance.Nics[0].Ip)
 	d.Set("enterprise_ip", instance.Nics[0].Ip)
 	d.Set("name", instance.Name)
 
@@ -174,8 +181,8 @@ func resourceIcfInstanceDelete(d *schema.ResourceData, meta interface{}) error {
 		d.Id())
 
 	stateConf := &resource.StateChangeConf{
-		Pending:    []string{"Delete_In_Progress"},
-		Target:     []string{"Deleted"},
+		Pending:    []string{icf.StatusDeleteInProgress},
+		Target:     []string{icf.StatusDeleted},
 		Refresh:    InstanceStateRefreshFunc(c, d.Id()),
 		Timeout:    5 * time.Minute,
 		Delay:      10 * time.Second,
@@ -201,7 +208,7 @@ func InstanceStateRefreshFunc(c *icf.Client, instanceID string) resource.StateRe
 			status := ""
 			errs := fmt.Sprintf("%v", err)
 			if strings.Contains(errs, "404") || strings.Contains(errs, "400") {
-				status = "Deleted"
+				status = icf.StatusDeleted
 				err = nil
 				return instance, status, err
 			}
